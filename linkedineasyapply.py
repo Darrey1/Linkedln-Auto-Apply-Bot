@@ -5,6 +5,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 from datetime import date
 from itertools import product
+import os
+
+
 
 
 class LinkedinEasyApply:
@@ -18,9 +21,10 @@ class LinkedinEasyApply:
         self.positions = parameters.get('positions', [])
         self.locations = parameters.get('locations', [])
         self.base_search_url = self.get_base_search_url(parameters)
+        self.check_error = False
         self.seen_jobs = []
         self.file_name = "output"
-        self.output_file_directory = parameters['outputFileDirectory']
+        # self.output_file_directory = parameters['outputFileDirectory']
         self.resume_dir = parameters['uploads']['resume']
         if 'coverLetter' in parameters['uploads']:
             self.cover_letter_dir = parameters['uploads']['coverLetter']
@@ -41,9 +45,9 @@ class LinkedinEasyApply:
         try:
             self.browser.get("https://www.linkedin.com/login")
             time.sleep(random.uniform(5, 10))
-            self.browser.find_element_by_id("username").send_keys(self.email)
-            self.browser.find_element_by_id("password").send_keys(self.password)
-            self.browser.find_element_by_css_selector(".btn__primary--large").click()
+            self.browser.find_element(By.ID,"username").send_keys(self.email)
+            self.browser.find_element(By.ID,"password").send_keys(self.password)
+            self.browser.find_element(By.CSS_SELECTOR, ".btn__primary--large").click()
             time.sleep(random.uniform(5, 10))
         except TimeoutException:
             raise Exception("Could not login!")
@@ -56,12 +60,14 @@ class LinkedinEasyApply:
             input("Please complete the security check and press enter in this console when it is done.")
             time.sleep(random.uniform(5.5, 10.5))
 
+            
+
     def start_applying(self):
         searches = list(product(self.positions, self.locations))
         random.shuffle(searches)
 
         page_sleep = 0
-        minimum_time = 60*15
+        minimum_time = 60
         minimum_page_time = time.time() + minimum_time
 
         for (position, location) in searches:
@@ -110,10 +116,11 @@ class LinkedinEasyApply:
     def apply_jobs(self, location):
         no_jobs_text = ""
         try:
-            no_jobs_element = self.browser.find_element_by_class_name('jobs-search-two-pane__no-results-banner--expand')
+            no_jobs_element = self.browser.find_element(By.CLASS_NAME, 'jobs-search-two-pane__no-results-banner--expand')
             no_jobs_text = no_jobs_element.text
         except:
             pass
+        print(" the no_jobs_element ", no_jobs_text)
         if 'No matching jobs found' in no_jobs_text:
             raise Exception("No more jobs on this page")
 
@@ -121,37 +128,42 @@ class LinkedinEasyApply:
             raise Exception("No more jobs on this page")
 
         try:
-            job_results = self.browser.find_element_by_class_name("jobs-search-results")
+            job_results = self.browser.find_element(By.CLASS_NAME, "scaffold-layout__list")
             self.scroll_slow(job_results)
             self.scroll_slow(job_results, step=300, reverse=True)
 
-            job_list = self.browser.find_elements_by_class_name('jobs-search-results__list')[0].find_elements_by_class_name('jobs-search-results__list-item')
+            job_list = self.browser.find_elements(By.CLASS_NAME, 'scaffold-layout__list-item')
+            # [0].find_element(By.CLASS_NAME,'jobs-search-results__list-item')
         except:
             raise Exception("No more jobs on this page")
 
         if len(job_list) == 0:
             raise Exception("No more jobs on this page")
-
+        
+        processed_labels = set()
         for job_tile in job_list:
             job_title, company, job_location, apply_method, link = "", "", "", "", ""
+            
+            try:
+                job_title = job_tile.find_element(By.CLASS_NAME,'job-card-list__title--link').text
+                link = job_tile.find_element(By.CLASS_NAME, 'job-card-list__title--link').get_attribute('href').split('?')[0]
 
-            try:
-                job_title = job_tile.find_element_by_class_name('job-card-list__title').text
-                link = job_tile.find_element_by_class_name('job-card-list__title').get_attribute('href').split('?')[0]
+                self.browser.execute_script("arguments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });", job_tile)
+                time.sleep(0.5)
             except:
                 pass
             try:
-                company = job_tile.find_element_by_class_name('job-card-container__company-name').text
+                company = job_tile.find_element(By.CLASS_NAME, 'artdeco-entity-lockup__subtitle').text
             except:
                 pass
             try:
-                job_location = job_tile.find_element_by_class_name('job-card-container__metadata-item').text
+                job_location = job_tile.find_element(By.CLASS_NAME, 'job-card-container__metadata-wrapper').text
             except:
                 pass
-            try:
-                apply_method = job_tile.find_element_by_class_name('job-card-container__apply-method').text
-            except:
-                pass
+            # try:
+            #     apply_method = job_tile.find_element(By.CLASS_NAME, 'job-card-container__apply-method').text
+            # except:
+            #     pass
 
             contains_blacklisted_keywords = False
             job_title_parsed = job_title.lower().split(' ')
@@ -164,10 +176,14 @@ class LinkedinEasyApply:
             if company.lower() not in [word.lower() for word in self.company_blacklist] and \
                contains_blacklisted_keywords is False and link not in self.seen_jobs:
                 try:
-                    job_el = job_tile.find_element_by_class_name('job-card-list__title')
-                    job_el.click()
+                    try:
+                        job_el = job_tile.find_element(By.CLASS_NAME, 'job-card-list__title--link')
+                        job_el.click()
+                    except:
+                        job_el = job_tile.find_element(By.CLASS_NAME, 'ucYlrWFwCvaQIgVhobahqnFcAINEqbalAgwY')
+                        job_el.click()
 
-                    time.sleep(random.uniform(3, 5))
+                    time.sleep(random.uniform(1,3))
 
 
                     try:
@@ -200,16 +216,19 @@ class LinkedinEasyApply:
                 print("Job contains blacklisted keyword or company name!")
             self.seen_jobs += link
 
+
+
+
     def apply_to_job(self):
         easy_apply_button = None
 
         try:
-            easy_apply_button = self.browser.find_element_by_class_name('jobs-apply-button')
+            easy_apply_button = self.browser.find_element(By.CLASS_NAME, 'jobs-apply-button')
         except:
             return False
 
         try:
-            job_description_area = self.browser.find_element_by_class_name("jobs-search__job-details--container")
+            job_description_area = self.browser.find_element(By.CLASS_NAME, "jobs-search__job-details--container")
             self.scroll_slow(job_description_area, end=1600)
             self.scroll_slow(job_description_area, end=1600, step=400, reverse=True)
         except:
@@ -225,7 +244,7 @@ class LinkedinEasyApply:
             while retries > 0:
                 try:
                     self.fill_up()
-                    next_button = self.browser.find_element_by_class_name("artdeco-button--primary")
+                    next_button = self.browser.find_element(By.CLASS_NAME, "artdeco-button--primary")
                     button_text = next_button.text.lower()
                     if submit_application_text in button_text:
                         try:
@@ -234,65 +253,128 @@ class LinkedinEasyApply:
                             print("Failed to unfollow company!")
                     time.sleep(random.uniform(1.5, 2.5))
                     next_button.click()
-                    time.sleep(random.uniform(3.0, 5.0))
+                    time.sleep(random.uniform(2.0, 4.0))
 
-                    if 'please enter a valid answer' in self.browser.page_source.lower() or 'file is required' in self.browser.page_source.lower():
-                        retries -= 1
-                        print("Retrying application, attempts left: " + str(retries))
-                    else:
+                    # if 'please enter a valid answer' in self.browser.page_source.lower() or 'file is required' in self.browser.page_source.lower() or self.check_error or 'enter a decimal number'  in self.browser.page_source.lower():
+                    #     retries -= 1
+                    #     print("Retrying application, attempts left: " + str(retries))
+                    
+                    # else:
+                    #     break
+                    try:
+                        errors = self.browser.find_elements(
+                            By.CSS_SELECTOR,
+                            ".artdeco-inline-feedback__message, .artdeco-inline-error, .input-error, .artdeco-toast-item"
+                        )
+                        error_texts = [
+                            e.text.strip()
+                            for e in errors
+                            if e.text.strip()
+                            and not any(
+                                phrase in e.text.lower()
+                                for phrase in [
+                                    "applied",          # e.g. "Applied 2 seconds ago"
+                                    "application sent", # LinkedIn success modal
+                                    "success"           # generic success words
+                                ]
+                            )
+                        ]
+
+                        if error_texts:
+                            for text in error_texts:
+                                print("Form error detected:", text)
+                            retries -= 1
+                            print("Retrying application, attempts left:", retries)
+                    
+                        else:
+                            break  # No real errors → stop retrying
+
+                    except Exception as e:
+                        print("Error while checking for form errors:", e)
                         break
+
+          
+
+
                 except:
+                    retries -= 1
                     traceback.print_exc()
-                    raise Exception("Failed to apply to job!")
+                    # raise Exception("Failed to apply to job!")
+                
             if retries == 0:
                 traceback.print_exc()
-                self.browser.find_element_by_class_name('artdeco-modal__dismiss').click()
-                time.sleep(random.uniform(3, 5))
-                self.browser.find_elements_by_class_name('artdeco-modal__confirm-dialog-btn')[1].click()
-                time.sleep(random.uniform(3, 5))
+                self.browser.find_element(By.CLASS_NAME, 'artdeco-modal__dismiss').click()
+                time.sleep(random.uniform(1, 3))
+                btn = self.browser.find_elements(By.CLASS_NAME, 'artdeco-modal__confirm-dialog-btn')
+                if btn and len(btn) > 1: btn[0].click()
+                time.sleep(random.uniform(1, 3))
                 raise Exception("Failed to apply to job!")
+            
 
         closed_notification = False
         time.sleep(random.uniform(3, 5))
+        print('let check if this place will get call')
         try:
-            self.browser.find_element_by_class_name('artdeco-modal__dismiss').click()
+            done_button = self.browser.find_element(
+                By.XPATH, "//button[contains(@class, 'artdeco-button') and contains(text(), 'Done')]"
+            )
+            done_button.click()
             closed_notification = True
         except:
             pass
-        try:
-            self.browser.find_element_by_class_name('artdeco-toast-item__dismiss').click()
-            closed_notification = True
-        except:
-            pass
-        time.sleep(random.uniform(3, 5))
 
-        if closed_notification is False:
+        # Try modal dismiss
+        if not closed_notification:
+            try:
+                self.browser.find_element(By.CLASS_NAME, 'artdeco-modal__dismiss').click()
+                closed_notification = True
+            except:
+                pass
+
+        # Try toast dismiss
+        if not closed_notification:
+            try:
+                self.browser.find_element(By.CLASS_NAME, 'artdeco-toast-item__dismiss').click()
+                closed_notification = True
+            except:
+                pass
+
+        if not closed_notification:
             raise Exception("Could not close the applied confirmation window!")
+
 
         return True
 
-    def home_address(self, element):
+
+
+    def home_address(self, element, lb):
         try:
-            groups = element.find_elements_by_class_name('jobs-easy-apply-form-section__grouping')
-            if len(groups) > 0:
-                for group in groups:
-                    lb = group.find_element_by_tag_name('label').text.lower()
-                    input_field = group.find_element_by_tag_name('input')
-                    if 'street' in lb:
-                        self.enter_text(input_field, self.personal_info['Street address'])
-                    elif 'city' in lb:
-                        self.enter_text(input_field, self.personal_info['City'])
-                        time.sleep(3)
-                        input_field.send_keys(Keys.DOWN)
-                        input_field.send_keys(Keys.RETURN)
-                    elif 'zip' in lb or 'postal' in lb:
-                        self.enter_text(input_field, self.personal_info['Zip'])
-                    elif 'state' in lb or 'province' in lb:
-                        self.enter_text(input_field, self.personal_info['State'])
-                    else:
-                        pass
+            # lb = element.find_element(By.CLASS_NAME, 'artdeco-text-input--label').text.lower()
+            print("current label",lb)
+            print("lb ", lb)
+            input_field = element.find_element(By.TAG_NAME, 'input')
+            if 'street' in lb:
+                self.enter_text(input_field, self.personal_info['Street address'])
+            elif 'city' in lb or 'location' in lb or 'street' in lb:
+                self.enter_text(input_field, self.personal_info['City'])
+                time.sleep(3)
+                input_field.send_keys(Keys.DOWN)
+                input_field.send_keys(Keys.RETURN)
+            elif 'zip' in lb or 'postal' in lb:
+                self.enter_text(input_field, self.personal_info['Zip'])
+            elif 'state' in lb or 'province' in lb:
+                self.enter_text(input_field, self.personal_info['State'])
+            
+            elif 'country' in lb or 'nationality' in lb:
+                self.enter_text(input_field, self.personal_info['Country'])
+
+            else:
+                pass
         except:
+            self.check_error = True
             pass
+
+
 
     def get_answer(self, question):
         if self.checkboxes[question]:
@@ -300,275 +382,284 @@ class LinkedinEasyApply:
         else:
             return 'no'
 
-    def additional_questions(self):
-        #pdb.set_trace()
-        frm_el = self.browser.find_elements_by_class_name('jobs-easy-apply-form-section__grouping')
-        if len(frm_el) > 0:
-            for el in frm_el:
-                # Radio check
+
+
+    def additional_questions(self, el, label):
+        try:
+            radios = el.find_elements(By.CLASS_NAME, 'NjnquydtxFtvGDhJTvXApZoHleThPeUJPE')
+
+            radio_text = el.text.lower()
+            radio_options = [text.text.lower() for text in radios]
+            answer = "yes"
+
+            if 'driver\'s licence' in radio_text or 'driver\'s license' in radio_text:
+                answer = self.get_answer('driversLicence')
+            elif 'gender' in radio_text or 'veteran' in radio_text or 'race' in radio_text or 'disability' in radio_text or 'latino' in radio_text:
+                answer = ""
+                for option in radio_options:
+                    if 'prefer' in option.lower() or 'decline' in option.lower() or 'don\'t' in option.lower() or 'specified' in option.lower() or 'none' in option.lower():
+                        answer = option
+
+                if answer == "":
+                    answer = radio_options[len(radio_options) - 1]
+            elif 'north korea' in radio_text:
+                answer = 'no'
+            
+            elif 'sponsor' in radio_text or 'sponsorship' in radio_text:
+                answer = self.get_answer('requireVisa')
+            elif 'authorized' in radio_text or 'authorised' in radio_text or 'legally' in radio_text:
+                answer = self.get_answer('legallyAuthorized')
+            elif 'urgent' in radio_text:
+                answer = self.get_answer('urgentFill')
+            elif 'commuting' in radio_text:
+                answer = self.get_answer('commute')
+            elif 'background check' in radio_text:
+                answer = self.get_answer('backgroundCheck')
+            elif 'level of education' in radio_text:
+                for degree in self.checkboxes['degreeCompleted']:
+                    if degree.lower() in radio_text:
+                        answer = "yes"
+                        break
+            elif 'level of education' in radio_text:
+                for degree in self.checkboxes['degreeCompleted']:
+                    if degree.lower() in radio_text:
+                        answer = "yes"
+                        break
+
+            elif "license or certification" in radio_text:
+                for degree in self.checkboxes['degreeCompleted']:
+                    if degree.lower() in radio_text:
+                        answer = "yes"
+                        break
+
+            elif 'data retention' in radio_text:
+                answer = 'no'
+            else:
+                answer = radio_options[len(radio_options) - 1]
+
+            i = 0
+            to_select = None
+            for radio in radios:
+                print("radio text ", radio.text)
+                if answer in radio.text.lower():
+                    to_select = radios[i]
+                i += 1
+
+            if to_select is None:
+                to_select = radios[len(radios)-1]
+
+            self.radio_select(to_select, answer, len(radios) > 2)
+
+            if radios != []:
+                pass
+        except:
+            pass
+        try:
+            question_text = el.text.lower()
+
+            txt_field_visible = False
+            try:
+                txt_field = el.find_element(By.CLASS_NAME, 'artdeco-text-input--input')
+
+                txt_field_visible = True
+            except:
                 try:
-                    radios = el.find_element_by_class_name('jobs-easy-apply-form-element').find_elements_by_class_name('fb-radio')
+                    txt_field = el.find_element(By.CLASS_NAME, 'fb-textarea')
 
-                    radio_text = el.text.lower()
-                    radio_options = [text.text.lower() for text in radios]
-                    answer = "yes"
+                    txt_field_visible = True
+                except:
+                    pass
 
-                    if 'driver\'s licence' in radio_text or 'driver\'s license' in radio_text:
-                        answer = self.get_answer('driversLicence')
-                    elif 'gender' in radio_text or 'veteran' in radio_text or 'race' in radio_text or 'disability' in radio_text or 'latino' in radio_text:
-                        answer = ""
-                        for option in radio_options:
-                            if 'prefer' in option.lower() or 'decline' in option.lower() or 'don\'t' in option.lower() or 'specified' in option.lower() or 'none' in option.lower():
-                                answer = option
+            if txt_field_visible != True:
+                txt_field = el.find_element(By.CLASS_NAME, 'multi-line-text__input')
 
-                        if answer == "":
-                            answer = radio_options[len(radio_options) - 1]
-                    elif 'north korea' in radio_text:
-                        answer = 'no'
-                    elif 'sponsor' in radio_text:
-                        answer = self.get_answer('requireVisa')
-                    elif 'authorized' in radio_text or 'authorised' in radio_text or 'legally' in radio_text:
-                        answer = self.get_answer('legallyAuthorized')
-                    elif 'urgent' in radio_text:
-                        answer = self.get_answer('urgentFill')
-                    elif 'commuting' in radio_text:
-                        answer = self.get_answer('commute')
-                    elif 'background check' in radio_text:
-                        answer = self.get_answer('backgroundCheck')
-                    elif 'level of education' in radio_text:
-                        for degree in self.checkboxes['degreeCompleted']:
-                            if degree.lower() in radio_text:
-                                answer = "yes"
-                                break
-                    elif 'level of education' in radio_text:
-                        for degree in self.checkboxes['degreeCompleted']:
-                            if degree.lower() in radio_text:
-                                answer = "yes"
-                                break
-                    elif 'data retention' in radio_text:
-                        answer = 'no'
+            text_field_type = txt_field.get_attribute('type').lower()
+            if 'numeric' in text_field_type:
+                text_field_type = 'numeric'
+            elif 'text' in text_field_type:
+                text_field_type = 'text'
+
+            to_enter = ''
+            if 'experience do you currently have' in question_text:
+                no_of_years = self.industry_default
+
+                for industry in self.industry:
+                    if industry.lower() in question_text:
+                        no_of_years = self.industry[industry]
+                        break
+
+                to_enter = no_of_years
+            elif 'many years of work experience do you have using' in question_text or 'experience' in question_text:
+                no_of_years = self.technology_default
+
+                for technology in self.technology:
+                    if technology.lower() in question_text:
+                        no_of_years = self.technology[technology]
+
+                to_enter = no_of_years
+            elif 'grade point average' in question_text:
+                to_enter = self.university_gpa
+            elif 'first name' in question_text:
+                to_enter = self.personal_info['First Name']
+            elif 'last name' in question_text:
+                to_enter = self.personal_info['Last Name']
+            elif 'name' in question_text:
+                to_enter = self.personal_info['First Name'] + " " + self.personal_info['Last Name']
+            elif 'phone' in question_text:
+                to_enter = self.personal_info['Mobile Phone Number']
+            elif 'linkedin' in question_text:
+                to_enter = self.personal_info['Linkedin']
+            elif 'website' in question_text or 'github' in question_text or 'portfolio' in question_text:
+                to_enter = self.personal_info['Website']
+            elif 'please confirm your current status' in question_text:
+                to_enter = 'confirm' 
+            else:
+                if text_field_type == 'numeric':
+                    to_enter = 0
+                else:
+                    to_enter = " ‏‏‎ "
+
+            if text_field_type == 'numeric':
+                if not isinstance(to_enter, (int, float)):
+                    to_enter = 0
+            elif to_enter == '':
+                to_enter = " ‏‏‎ "
+
+            self.enter_text(txt_field, to_enter)
+
+        except:
+            pass
+        # Date Check
+        try:
+            # class="artdeco-text-input--input"
+            date_picker = el.find_element(By.CLASS_NAME, 'artdeco-datepicker__input')
+            date_picker.clear()
+            date_picker.send_keys(date.today().strftime("%m/%d/%y"))
+            time.sleep(3)
+            date_picker.send_keys(Keys.RETURN)
+            time.sleep(2)
+        except:
+            pass
+        # Dropdown check
+        try:
+
+
+            dropdown_field = el.find_element(By.CLASS_NAME, 'fb-dash-form-element__select-dropdown')
+
+            select = Select(dropdown_field)
+
+            options = [options.text for options in select.options]
+
+            if 'proficiency' in question_text:
+                proficiency = "Conversational"
+
+                for language in self.languages:
+                    if language.lower() in question_text:
+                        proficiency = self.languages[language]
+                        break
+
+                self.select_dropdown(dropdown_field, proficiency)
+            elif 'country code' in question_text:
+                self.select_dropdown(dropdown_field, self.personal_info['Phone Country Code'])
+            elif 'north korea' in question_text:
+
+                choice = ""
+
+                for option in options:
+                    if 'no' in option.lower():
+                        choice = option
+
+                if choice == "":
+                    choice = options[len(options) - 1]
+
+                self.select_dropdown(dropdown_field, choice)
+            elif 'sponsor' in question_text:
+                answer = self.get_answer('requireVisa')
+
+                choice = ""
+
+                for option in options:
+                    if answer == 'yes':
+                        choice = option
                     else:
-                        answer = radio_options[len(radio_options) - 1]
+                        if 'no' in option.lower():
+                            choice = option
 
-                    i = 0
-                    to_select = None
-                    for radio in radios:
-                        if answer in radio.text.lower():
-                            to_select = radios[i]
-                        i += 1
+                if choice == "":
+                    choice = options[len(options) - 1]
 
-                    if to_select is None:
-                        to_select = radios[len(radios)-1]
+                self.select_dropdown(dropdown_field, choice)
+            elif 'authorized' in question_text or 'authorised' in question_text:
+                answer = self.get_answer('legallyAuthorized')
 
-                    self.radio_select(to_select, answer, len(radios) > 2)
+                choice = ""
 
-                    if radios != []:
-                        continue
-                except:
-                    pass
-                # Questions check
-                try:
-                    question = el.find_element_by_class_name('jobs-easy-apply-form-element')
-                    question_text = question.find_element_by_class_name('fb-form-element-label').text.lower()
-
-                    txt_field_visible = False
-                    try:
-                        txt_field = question.find_element_by_class_name('fb-single-line-text__input')
-
-                        txt_field_visible = True
-                    except:
-                        try:
-                            txt_field = question.find_element_by_class_name('fb-textarea')
-
-                            txt_field_visible = True
-                        except:
-                            pass
-
-                    if txt_field_visible != True:
-                        txt_field = question.find_element_by_class_name('multi-line-text__input')
-
-                    text_field_type = txt_field.get_attribute('name').lower()
-                    if 'numeric' in text_field_type:
-                        text_field_type = 'numeric'
-                    elif 'text' in text_field_type:
-                        text_field_type = 'text'
-
-                    to_enter = ''
-                    if 'experience do you currently have' in question_text:
-                        no_of_years = self.industry_default
-
-                        for industry in self.industry:
-                            if industry.lower() in question_text:
-                                no_of_years = self.industry[industry]
-                                break
-
-                        to_enter = no_of_years
-                    elif 'many years of work experience do you have using' in question_text:
-                        no_of_years = self.technology_default
-
-                        for technology in self.technology:
-                            if technology.lower() in question_text:
-                                no_of_years = self.technology[technology]
-
-                        to_enter = no_of_years
-                    elif 'grade point average' in question_text:
-                        to_enter = self.university_gpa
-                    elif 'first name' in question_text:
-                        to_enter = self.personal_info['First Name']
-                    elif 'last name' in question_text:
-                        to_enter = self.personal_info['Last Name']
-                    elif 'name' in question_text:
-                        to_enter = self.personal_info['First Name'] + " " + self.personal_info['Last Name']
-                    elif 'phone' in question_text:
-                        to_enter = self.personal_info['Mobile Phone Number']
-                    elif 'linkedin' in question_text:
-                        to_enter = self.personal_info['Linkedin']
-                    elif 'website' in question_text or 'github' in question_text or 'portfolio' in question_text:
-                        to_enter = self.personal_info['Website']
+                for option in options:
+                    if answer == 'yes':
+                        # find some common words
+                        choice = option
                     else:
-                        if text_field_type == 'numeric':
-                            to_enter = 0
-                        else:
-                            to_enter = " ‏‏‎ "
+                        if 'no' in option.lower():
+                            choice = option
 
-                    if text_field_type == 'numeric':
-                        if not isinstance(to_enter, (int, float)):
-                            to_enter = 0
-                    elif to_enter == '':
-                        to_enter = " ‏‏‎ "
+                if choice == "":
+                    choice = options[len(options) - 1]
 
-                    self.enter_text(txt_field, to_enter)
-                    continue
-                except:
-                    pass
-                # Date Check
-                try:
-                    date_picker = el.find_element_by_class_name('artdeco-datepicker__input ')
-                    date_picker.clear()
-                    date_picker.send_keys(date.today().strftime("%m/%d/%y"))
-                    time.sleep(3)
-                    date_picker.send_keys(Keys.RETURN)
-                    time.sleep(2)
-                    continue
-                except:
-                    pass
-                # Dropdown check
-                try:
-                    question = el.find_element_by_class_name('jobs-easy-apply-form-element')
-                    question_text = question.find_element_by_class_name('fb-form-element-label').text.lower()
+                self.select_dropdown(dropdown_field, choice)
+            elif 'citizenship' in question_text:
+                answer = self.get_answer('legallyAuthorized')
 
-                    dropdown_field = question.find_element_by_class_name('fb-dropdown__select')
+                choice = ""
 
-                    select = Select(dropdown_field)
+                for option in options:
+                    if answer == 'yes':
+                        if 'no' in option.lower():
+                            choice = option
 
-                    options = [options.text for options in select.options]
+                if choice == "":
+                    choice = options[len(options) - 1]
 
-                    if 'proficiency' in question_text:
-                        proficiency = "Conversational"
+                self.select_dropdown(dropdown_field, choice)
+            elif 'gender' in question_text or 'veteran' in question_text or 'race' in question_text or 'disability' in question_text or 'latino' in question_text:
 
-                        for language in self.languages:
-                            if language.lower() in question_text:
-                                proficiency = self.languages[language]
-                                break
+                choice = ""
 
-                        self.select_dropdown(dropdown_field, proficiency)
-                    elif 'country code' in question_text:
-                        self.select_dropdown(dropdown_field, self.personal_info['Phone Country Code'])
-                    elif 'north korea' in question_text:
+                for option in options:
+                    if 'prefer' in option.lower() or 'decline' in option.lower() or 'don\'t' in option.lower() or 'specified' in option.lower() or 'none' in option.lower():
+                        choice = option
 
-                        choice = ""
+                if choice == "":
+                    choice = options[len(options) - 1]
 
-                        for option in options:
-                            if 'no' in option.lower():
-                                choice = option
+                self.select_dropdown(dropdown_field, choice)
+            else:
+                choice = ""
 
-                        if choice == "":
-                            choice = options[len(options) - 1]
+                for option in options:
+                    if 'yes' in option.lower():
+                        choice = option
 
-                        self.select_dropdown(dropdown_field, choice)
-                    elif 'sponsor' in question_text:
-                        answer = self.get_answer('requireVisa')
+                if choice == "":
+                    choice = options[len(options) - 1]
 
-                        choice = ""
+                self.select_dropdown(dropdown_field, choice)
+  
+        except:
+            pass
 
-                        for option in options:
-                            if answer == 'yes':
-                                choice = option
-                            else:
-                                if 'no' in option.lower():
-                                    choice = option
+        # Checkbox check for agreeing to terms and service
+        try:
+            question = el.find_element(By.CLASS_NAME, 'jobs-easy-apply-form-element')
 
-                        if choice == "":
-                            choice = options[len(options) - 1]
+            clickable_checkbox = question.find_element(By.TAG_NAME, 'label')
 
-                        self.select_dropdown(dropdown_field, choice)
-                    elif 'authorized' in question_text or 'authorised' in question_text:
-                        answer = self.get_answer('legallyAuthorized')
+            clickable_checkbox.click()
+        except:
+            pass
 
-                        choice = ""
 
-                        for option in options:
-                            if answer == 'yes':
-                                # find some common words
-                                choice = option
-                            else:
-                                if 'no' in option.lower():
-                                    choice = option
 
-                        if choice == "":
-                            choice = options[len(options) - 1]
 
-                        self.select_dropdown(dropdown_field, choice)
-                    elif 'citizenship' in question_text:
-                        answer = self.get_answer('legallyAuthorized')
-
-                        choice = ""
-
-                        for option in options:
-                            if answer == 'yes':
-                                if 'no' in option.lower():
-                                    choice = option
-
-                        if choice == "":
-                            choice = options[len(options) - 1]
-
-                        self.select_dropdown(dropdown_field, choice)
-                    elif 'gender' in question_text or 'veteran' in question_text or 'race' in question_text or 'disability' in question_text or 'latino' in question_text:
-
-                        choice = ""
-
-                        for option in options:
-                            if 'prefer' in option.lower() or 'decline' in option.lower() or 'don\'t' in option.lower() or 'specified' in option.lower() or 'none' in option.lower():
-                                choice = option
-
-                        if choice == "":
-                            choice = options[len(options) - 1]
-
-                        self.select_dropdown(dropdown_field, choice)
-                    else:
-                        choice = ""
-
-                        for option in options:
-                            if 'yes' in option.lower():
-                                choice = option
-
-                        if choice == "":
-                            choice = options[len(options) - 1]
-
-                        self.select_dropdown(dropdown_field, choice)
-                    continue
-                except:
-                    pass
-
-                # Checkbox check for agreeing to terms and service
-                try:
-                    question = el.find_element_by_class_name('jobs-easy-apply-form-element')
-
-                    clickable_checkbox = question.find_element_by_tag_name('label')
-
-                    clickable_checkbox.click()
-                except:
-                    pass
 
     def unfollow(self):
         try:
@@ -606,72 +697,76 @@ class LinkedinEasyApply:
 
     # Radio Select
     def radio_select(self, element, label_text, clickLast=False):
-        label = element.find_element_by_tag_name('label')
+        label = element.find_element(By.TAG_NAME, 'label')
         if label_text in label.text.lower() or clickLast == True:
             label.click()
         else:
             pass
 
-    # Contact info fill-up
-    def contact_info(self):
-        frm_el = self.browser.find_elements_by_class_name('jobs-easy-apply-form-section__grouping')
-        if len(frm_el) > 0:
-            for el in frm_el:
-                text = el.text.lower()
-                if 'email address' in text:
-                    continue
-                elif 'phone number' in text:
-                    try:
-                        country_code_picker = el.find_element_by_class_name('fb-dropdown__select')
-                        self.select_dropdown(country_code_picker, self.personal_info['Phone Country Code'])
-                    except:
-                        print("Country code " + self.personal_info['Phone Country Code'] + " not found! Make sure it is exact.")
-                    try:
-                        phone_number_field = el.find_element_by_class_name('fb-single-line-text__input')
-                        self.enter_text(phone_number_field, self.personal_info['Mobile Phone Number'])
-                    except:
-                        print("Could not input phone number.")
+
+    def contact_info(self, el):
+        text = el.text.lower()
+        if 'phone number' in text or 'phone' in text:
+            try:
+                country_code_picker = el.find_element(By.CLASS_NAME, 'fb-fb-dash-form-element__select-dropdown')
+                self.select_dropdown(country_code_picker, self.personal_info['Phone Country Code'])
+            except:
+                print("Country code " + self.personal_info['Phone Country Code'] + " not found! Make sure it is exact.")
+            try:
+                phone_number_field = el.find_element(By.CLASS_NAME, 'artdeco-text-input--input')
+                self.enter_text(phone_number_field, self.personal_info['Mobile Phone Number'])
+            except:
+                print("Could not input phone number.")
+
+
+
 
     def fill_up(self):
-        try:
-            easy_apply_content = self.browser.find_element_by_class_name('jobs-easy-apply-content')
-            b4 = easy_apply_content.find_element_by_class_name('pb4')
-            pb4 = easy_apply_content.find_elements_by_class_name('pb4')
-            if len(pb4) > 0:
-                for pb in pb4:
-                    try:
-                        label = pb.find_element_by_tag_name('h3').text.lower()
-                        try:
-                            self.additional_questions()
-                        except:
-                            pass
+        self.check_error = False
+        easy_apply_content = self.browser.find_element(By.CLASS_NAME, 'jobs-easy-apply-modal__content')
+        pb4 = easy_apply_content.find_elements(By.CLASS_NAME, 'HWQIVCOkrsgtkZGjmkPslQtMOOBeXwgU')
+        if len(pb4) > 0:
+            for index, pb in enumerate(pb4):
+                print("index", index)
+                label = pb.find_element(By.TAG_NAME, 'label').text.lower()
+                print("label", label)
+                try:
+                    self.additional_questions(pb, label)
+                except Exception  as e:
+                    print("error occur inside the addionatinal question ", e)
+                    self.check_error = True
+                    pass
 
-                        try:
-                            self.send_resume()
-                        except:
-                            pass
+                try:
+                    self.send_resume()
+                except:
+                    pass
 
-                        if 'home address' in label:
-                            self.home_address(pb)
-                        elif 'contact info' in label:
-                            self.contact_info()
-                    except:
-                        pass
-        except:
-            pass
+                if any(word in label for word in ['address', 'home', 'location', 'city', 'country', 'street', 'nationality']):
+                    self.home_address(pb, label)
+                elif any(word in label for word in ['contact', 'phone', 'info']):
+                    self.contact_info(pb)
+
+
 
     def write_to_file(self, company, job_title, link, location, search_location):
+        output_dir = "output_csv"
+        os.makedirs(output_dir, exist_ok=True)
         to_write = [company, job_title, link, location]
-        file_path = self.output_file_directory + self.file_name + search_location + ".csv"
+        file_path = os.path.join(output_dir, f"{self.file_name}{search_location}.csv")
 
         with open(file_path, 'a') as f:
             writer = csv.writer(f)
             writer.writerow(to_write)
 
+
+
     def scroll_slow(self, scrollable_element, start=0, end=3600, step=100, reverse=False):
         if reverse:
             start, end = end, start
             step = -step
+
+            
 
         for i in range(start, end, step):
             self.browser.execute_script("arguments[0].scrollTo(0, {})".format(i), scrollable_element)
@@ -725,6 +820,8 @@ class LinkedinEasyApply:
         return extra_search_terms_str
 
     def next_job_page(self, position, location, job_page):
+        print("https://www.linkedin.com/jobs/search/" + self.base_search_url +
+                         "&keywords=" + position + location + "&start=" + str(job_page*25))
         self.browser.get("https://www.linkedin.com/jobs/search/" + self.base_search_url +
                          "&keywords=" + position + location + "&start=" + str(job_page*25))
 

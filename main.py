@@ -3,6 +3,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 from linkedineasyapply import LinkedinEasyApply
+from selenium.webdriver.chrome.service import Service
 from validate_email import validate_email
 
 def init_browser():
@@ -13,7 +14,7 @@ def init_browser():
     for option in options:
         browser_options.add_argument(option)
 
-    driver = webdriver.Chrome(ChromeDriverManager().install(), chrome_options=browser_options)
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=browser_options)
 
     driver.set_window_position(0, 0)
     driver.maximize_window()
@@ -29,7 +30,7 @@ def validate_yaml():
             raise exc
 
     mandatory_params = ['email', 'password', 'disableAntiLock', 'remote', 'experienceLevel', 'jobTypes', 'date',
-                        'positions', 'locations', 'distance', 'outputFileDirectory', 'checkboxes', 'universityGpa',
+                        'positions', 'locations', 'distance', 'checkboxes', 'universityGpa',
                         'languages', 'industry', 'technology', 'personalInfo', 'eeo', 'uploads']
 
     for mandatory_param in mandatory_params:
@@ -71,7 +72,7 @@ def validate_yaml():
     assert parameters['distance'] in approved_distances
 
     assert len(parameters['positions']) > 0
-    assert len(parameters['locations']) > 0
+    # assert len(parameters['locations']) > 0
 
     assert len(parameters['uploads']) >= 1 and 'resume' in parameters['uploads']
 
